@@ -37,11 +37,16 @@ async function handleDownloadSites() {
     try {
         const arr = await api.exportSites();
         const blob = new Blob([JSON.stringify(arr, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
+        a.href = url;
         a.download = 'maccms-sites.json';
+        // 手機瀏覽器下載是非同步的:要先掛進 DOM 才觸發得了,且 revoke 要延後,
+        // 否則 blob 在下載真正開始前就被釋放 → 抓到 0 byte 空檔
+        document.body.appendChild(a);
         a.click();
-        URL.revokeObjectURL(a.href);
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
     } catch (err) {
         showModal('下載失敗: ' + err.message, 'error');
     }
