@@ -65,7 +65,7 @@ export function renderCategories(categories) {
 }
 
 // 一頁顯示幾筆(聚合後)。kazi 雙層分頁:把「資料頁」切成數個「顯示頁」,前端翻顯示頁不打伺服器、頁面也短。
-export const INNER_PAGE_SIZE = 24;
+export const INNER_PAGE_SIZE = 999;
 
 // 把同名影片聚合成一筆(多站搜尋時同片會來自多站),回傳保留順序的群組陣列。
 export function aggregateVideos(videos) {
