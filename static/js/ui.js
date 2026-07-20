@@ -1,7 +1,7 @@
 import state from './state.js';
 import { playVideo } from './player.js';
 import { fetchVideoDetails, checkHistoryUpdates, fetchMultiSiteVideoList } from './api.js';
-import { $, $$, matchEpisodeIndex } from './utils.js';
+import { $, $$, matchEpisodeIndex, applyImageAccel, getPageSize } from './utils.js';
 import { showModal, showConfirm, showToast } from './modal.js';
 import historyManager from './historyStateManager.js';
 import { armConfirmDelete } from './confirmDelete.js';
@@ -65,7 +65,7 @@ export function renderCategories(categories) {
 }
 
 // 一頁顯示幾筆(聚合後)。kazi 雙層分頁:把「資料頁」切成數個「顯示頁」,前端翻顯示頁不打伺服器、頁面也短。
-export const INNER_PAGE_SIZE = 999;
+export function INNER_PAGE_SIZE() { return getPageSize(); }
 
 // 把同名影片聚合成一筆(多站搜尋時同片會來自多站),回傳保留順序的群組陣列。
 export function aggregateVideos(videos) {
@@ -85,7 +85,7 @@ function buildVideoCard(name, videoList) {
 
     let finalImageUrl;
     if (firstVideo.vod_pic && firstVideo.vod_pic.trim()) {
-        finalImageUrl = firstVideo.vod_pic;
+        finalImageUrl = applyImageAccel(firstVideo.vod_pic);
     } else {
         const englishName = name.replace(/[^\w\s]/g, '').substring(0, 10);
         finalImageUrl = `https://placehold.co/300x400.png?text=${encodeURIComponent(englishName || 'No Image')}`;
@@ -132,8 +132,8 @@ export function renderVideos() {
         grid.innerHTML = '<p style="text-align: center; grid-column: 1 / -1; padding: 20px;">沒有找到相關內容。</p>';
         return;
     }
-    const start = (state.displayPage - 1) * INNER_PAGE_SIZE;
-    groups.slice(start, start + INNER_PAGE_SIZE).forEach(g => grid.appendChild(buildVideoCard(g.name, g.list)));
+    const start = (state.displayPage - 1) * INNER_PAGE_SIZE();
+    groups.slice(start, start + INNER_PAGE_SIZE()).forEach(g => grid.appendChild(buildVideoCard(g.name, g.list)));
 }
 
 // kazi 雙層分頁:顯示頁(內層,前端切片即時翻)+ 資料頁(外層,向伺服器抓)。
@@ -816,7 +816,7 @@ export function renderWatchHistory() {
         // 處理圖片URL
         let finalImageUrl;
         if (item.videoPic && item.videoPic.trim()) {
-            finalImageUrl = item.videoPic;
+            finalImageUrl = applyImageAccel(item.videoPic);
         } else {
             // 嘗試從影片名稱生成一個更相關的佔位圖片
             const englishName = item.videoName.replace(/[^\w\s]/g, '').substring(0, 10);
@@ -1181,7 +1181,7 @@ function renderFavorites() {
         const card = document.createElement('div');
         card.className = 'history-item';
         const pic = fav.videoPic && fav.videoPic.trim()
-            ? fav.videoPic
+            ? applyImageAccel(fav.videoPic)
             : `https://placehold.co/300x400/666666/ffffff.png?text=${encodeURIComponent((fav.videoName || '').replace(/[^\w\s]/g, '').substring(0, 10) || 'No Image')}`;
         const site = state.sites.find(s => s.url === fav.siteUrl);
         const siteName = fav.siteName || site?.name || '未知站台';

@@ -115,7 +115,50 @@
             </div>
             <button type="submit" class="btn btn-primary">儲存外觀設定</button>
         </form>
+    
+    <div class="card site-settings-card">
+        <div class="card-header">
+            <h2>图片加速设置</h2>
+        </div>
+        <div class="form-group">
+            <label class="checkbox-label" style="display:flex;align-items:center;gap:10px;">
+                <input type="checkbox" id="imageAccelToggle">
+                <span>启用图片加速（通过 CDN 加速资源站外链图片）</span>
+            </label>
+        </div>
+        <div id="imageAccelOptions" style="display:none;">
+            <div class="form-group">
+                <label>节点选择</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
+                                        <label class="checkbox-label"><input type="radio" name="accelNode" value="i0"> i0.wp.com</label>
+                    <label class="checkbox-label"><input type="radio" name="accelNode" value="i1"> i1.wp.com</label>
+                    <label class="checkbox-label"><input type="radio" name="accelNode" value="i2"> i2.wp.com</label>
+                    <label class="checkbox-label"><input type="radio" name="accelNode" value="i3"> i3.wp.com</label>
+                </div>
+            </div>
+            <div class="form-group">
+                <!-- latency shown next to each node label -->
+                <div id="accelTestResults" style="margin-top:8px;"></div>
+            </div>
+            <div class="form-group">
+                <button id="saveAccelBtn" class="btn btn-primary">保存图片加速设置</button>
+            </div>
+        </div>
     </div>
+
+    <div class="card site-settings-card">
+        <div class="card-header">
+            <h2>首页显示设置</h2>
+        </div>
+        <div class="form-group">
+            <label for="pageSizeInput">每页显示视频数</label>
+            <input type="number" id="pageSizeInput" min="6" max="96" step="6" value="24" style="width:100px;">
+            <span style="margin-left:8px;font-size:var(--fs-caption);color:var(--text-muted-color);">资源站每页固定 20 条，建议设50</span>
+        </div>
+        <button id="savePageSizeBtn" class="btn btn-primary">保存首页显示设置</button>
+    </div>
+
+</div>
 </div>
 {% endblock %}
 

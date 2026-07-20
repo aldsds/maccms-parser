@@ -1,6 +1,7 @@
 import time
 import json
 import concurrent.futures
+import requests as req_lib
 from flask import Blueprint, request, jsonify, session
 from urllib.parse import urlparse, urlunparse
 
@@ -8,6 +9,7 @@ from logger_config import setup_logger
 from site_manager import get_sites, save_sites
 from api_parser import process_api_request, get_details_from_api
 import storage
+from config import get_config_value, set_config_value, get_timeout_config
 
 # 容量上限放寬,留空間給軟刪墓碑(deletedAt):active 200(跟前端一致)+ 墓碑(30 天後清)
 MAX_HISTORY_ITEMS = 300
@@ -591,18 +593,10 @@ def api_get_list_route():
     sites = get_sites()
     site = next((s for s in sites if s['url'] == url), None)
     ssl_verify = site.get('ssl_verify', True) if site else True
-
-    params = {
-        'pg': data.get('page', 1),
-        't': data.get('type_id'),
-        'wd': data.get('keyword')
-    }
-    params = {k: v for k, v in params.items() if v}
-
-    # 站點名稱用於日誌(沿用上面已查到的 site,不必再讀一次)
+    page_size = get_config_value('page_size', 24)
     site_name = site['name'] if site else None
 
-    result = process_api_request(url, params, logger, ssl_verify=ssl_verify, site_name=site_name)
+    result = _fetch_list_with_page_size(url, data.get('page', 1), data.get('type_id'), data.get('keyword'), page_size, logger, ssl_verify, site_name)
     return jsonify(result)
 
 @api_bp.route('/details', methods=['POST'])
@@ -633,32 +627,21 @@ def multi_site_search():
     max_page_count = 0
     
     def search_site(site):
-        params = {'wd': keyword, 'pg': page}
         ssl_verify = site.get('ssl_verify', True)
+        psize = get_config_value('page_size', 24)
         try:
-            result = process_api_request(site['url'], params, logger, ssl_verify=ssl_verify, site_name=site['name'])
-            
-            if result.get('status') == 'success':
-                if result.get('list'):
-                    for video in result['list']:
-                        video['from_site'] = site['name']
-                        video['from_site_id'] = site['id']
-                    
-                    page_count = int(result.get('pagecount', 0))
-                    return result['list'], page_count
-                else:
-                    # 搜尋成功但沒有結果
-                    page_count = int(result.get('pagecount', 0))
-                    return [], page_count
-            else:
-                # 真正的搜尋失敗
-                error_msg = result.get('message', '未知錯誤')
-                logger.warning(f"站台 {site['name']} 搜尋失敗: {error_msg}")
-                return [], 0
+            sub = _fetch_list_with_page_size(site['url'], page, None, keyword, psize, logger, ssl_verify, site.get('name'))
+            if sub.get('status') == 'success':
+                vlist = sub.get('list', [])
+                for video in vlist:
+                    video['from_site'] = site['name']
+                    video['from_site_id'] = site['id']
+                pc = int(sub.get('pagecount', 1))
+                return vlist, pc
+            return [], 0
         except Exception as e:
             logger.error(f"站台 {site['name']} 搜尋異常: {type(e).__name__}: {str(e)}")
             return [], 0
-
     max_workers = _search_concurrency(len(sites_to_search))
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_site = {executor.submit(search_site, site): site for site in sites_to_search}
@@ -856,3 +839,103 @@ def check_history_updates():
     except Exception as e:
         logger.error(f"批量檢查歷史更新失敗: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@api_bp.route('/settings/image_accel', methods=['GET', 'POST'])
+def image_accel_settings():
+    if request.method == 'GET':
+        return jsonify({
+            'enabled': get_config_value('image_accel_enabled', False),
+            'node': get_config_value('image_accel_node', 'auto'),
+            'fastest_node': get_config_value('image_accel_fastest_node', ''),
+        })
+    data = request.get_json(force=True) or {}
+    set_config_value('image_accel_enabled', bool(data.get('enabled', False)))
+    if 'node' in data:
+        node = data['node']
+        if node in ('i0', 'i1', 'i2', 'i3', 'auto'):
+            set_config_value('image_accel_node', node)
+    return jsonify({'status': 'success'})
+
+
+@api_bp.route('/settings/image_accel/ping', methods=['POST'])
+def image_accel_ping():
+    nodes = ['i0', 'i1', 'i2', 'i3']
+    results = {}
+    timeout = get_timeout_config()
+
+    for node in nodes:
+        url = f'https://{node}.wp.com'
+        try:
+            start = time.time()
+            resp = req_lib.get(url, timeout=timeout,
+                               headers={'User-Agent': 'Mozilla/5.0'},
+                               allow_redirects=True)
+            elapsed = int((time.time() - start) * 1000)
+            results[node] = {
+                'latency': elapsed,
+                'status': 'success' if resp.ok else 'error',
+                'code': resp.status_code,
+            }
+        except Exception as e:
+            results[node] = {
+                'latency': None,
+                'status': 'error',
+                'error': str(e),
+            }
+
+    valid = {k: v for k, v in results.items() if v.get('status') == 'success'}
+    fastest = min(valid, key=lambda k: valid[k]['latency']) if valid else None
+    if fastest:
+        set_config_value('image_accel_fastest_node', fastest)
+
+    return jsonify({'results': results, 'fastest': fastest})
+
+
+@api_bp.route('/settings/page_size', methods=['GET', 'POST'])
+def page_size_settings():
+    if request.method == 'GET':
+        return jsonify({'page_size': get_config_value('page_size', 24)})
+    data = request.get_json(force=True) or {}
+    val = int(data.get('page_size', 24))
+    if val < 6: val = 6
+    if val > 96: val = 96
+    set_config_value('page_size', val)
+    return jsonify({'status': 'success'})
+
+def _fetch_list_with_page_size(url, page, type_id, keyword, page_size, logger, ssl_verify, site_name):
+    params = {"pg": page, "t": type_id, "wd": keyword}
+    params = {k: v for k, v in params.items() if v}
+    result = process_api_request(url, params, logger, ssl_verify=ssl_verify, site_name=site_name)
+    if result.get("status") != "success":
+        return result
+    videos = result.get("list", [])
+    if not videos:
+        return result
+    per_page = len(videos)
+    if page_size <= per_page:
+        return result
+    needed = page_size - per_page
+    extra_pages = (needed + per_page - 1) // per_page
+    if extra_pages > 0:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        all_extra = []
+        with ThreadPoolExecutor(max_workers=min(extra_pages, 4)) as ex:
+            futures = []
+            for p in range(int(page) + 1, int(page) + extra_pages + 1):
+                p_params = {"pg": p, "t": type_id, "wd": keyword}
+                p_params = {k: v for k, v in p_params.items() if v}
+                futures.append(ex.submit(process_api_request, url, p_params, logger, ssl_verify=ssl_verify, site_name=site_name))
+            for f in as_completed(futures):
+                try:
+                    sub = f.result()
+                    if sub.get("status") == "success":
+                        all_extra.extend(sub.get("list", []))
+                except Exception:
+                    pass
+        videos.extend(all_extra)
+        result["list"] = videos[:page_size]
+        total = result.get("total", 0) or len(videos)
+        result["pagecount"] = max(1, (total + page_size - 1) // page_size)
+    return result
+
+

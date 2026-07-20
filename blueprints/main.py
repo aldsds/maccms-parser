@@ -17,10 +17,18 @@ def index():
     favicon_url = f"/favicon?v={favicon_version}"
     # 先把目前帳號暱稱 server-render 進按鈕,首屏就正確,不會先閃「帳號」再換成暱稱
     account_name = account_nickname(session.get('role'), session.get('account_id', ''))
+    image_accel_enabled = get_config_value('image_accel_enabled', False)
+    image_accel_node = get_config_value('image_accel_node', 'auto')
+    image_accel_fastest = get_config_value('image_accel_fastest_node', '')
+    page_size = get_config_value('page_size', 24)
     return render_template('index.html', site_title=site_title, favicon_url=favicon_url, version=VERSION,
                            is_admin=(session.get('role') == 'admin'),
                            account_id=session.get('account_id', ''),
-                           account_name=account_name)
+                           account_name=account_name,
+                           image_accel_enabled=str(image_accel_enabled).lower(),
+                           image_accel_node=image_accel_node,
+                           image_accel_fastest=image_accel_fastest,
+                           page_size=page_size)
 
 @main_bp.route('/profile')
 def profile():

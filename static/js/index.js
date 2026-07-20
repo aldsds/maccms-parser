@@ -433,7 +433,7 @@ async function fetchAndRender(urlMode = 'auto') {
 
         // 聚合 + 切顯示頁(雙層分頁的內層)
         state.aggregated = ui.aggregateVideos(state.videos);
-        state.innerPageCount = Math.max(1, Math.ceil(state.aggregated.length / ui.INNER_PAGE_SIZE));
+        state.innerPageCount = Math.max(1, Math.ceil(state.aggregated.length / ui.INNER_PAGE_SIZE()));
         // 一般跳到第 1 個顯示頁;若是「往前跨資料頁」則停在最後一個顯示頁(連續往回)
         state.displayPage = state._pendingDisplayLast ? state.innerPageCount : 1;
         state._pendingDisplayLast = false;

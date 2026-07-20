@@ -18,3 +18,20 @@ export function matchEpisodeIndex(currentName, currentIdx, targetEpisodes) {
     }
     return Math.min(Math.max(currentIdx, 0), targetEpisodes.length - 1);
 }
+// apply wp.com CDN prefix for image acceleration
+export function applyImageAccel(url) {
+    if (!url || typeof url !== 'string') return url;
+    var meta = document.querySelector('meta[name="image-accel-enabled"]');
+    if (!meta || meta.content !== 'true') return url;
+    if (/^https?:\/\/(i[0-3]\.wp\.com)\/.*/.test(url)) return url;
+    var nodeMeta = document.querySelector('meta[name="image-accel-node"]');
+    var node = (nodeMeta ? nodeMeta.content : 'i0');
+    if (!node || node === 'auto') node = 'i0';
+    var clean = url.replace(/^https?:\/\//, '');
+    return 'https://' + node + '.wp.com/' + clean;
+}
+
+export function getPageSize() {
+    var m = document.querySelector('meta[name="page-size"]');
+    return m ? parseInt(m.content, 10) || 24 : 24;
+}

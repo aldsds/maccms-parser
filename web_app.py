@@ -63,4 +63,4 @@ if __name__ == '__main__':
     is_docker = os.path.exists('/.dockerenv')
     host = '0.0.0.0' if is_docker else '127.0.0.1'
     logger.info(f"請用瀏覽器訪問: http://{host}:5000")
-    app.run(host=host, port=5000, debug=True)
+    app.run(host=host, port=5000, debug=False)

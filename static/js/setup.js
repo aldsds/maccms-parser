@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $('#importFileInput').addEventListener('change', handleImportFile);
     // 新增外觀設定表單事件
     loadSiteSettings();
+    loadImageAccelSettings();
     $('#siteSettingsForm').addEventListener('submit', handleSiteSettingsSubmit);
     $('#faviconInput').addEventListener('change', handleFaviconPreview);
 });
@@ -454,4 +455,123 @@ async function handleSiteSettingsSubmit(e) {
     } catch (err) {
         showModal('儲存失敗: ' + err.message, 'error');
     }
+}
+
+
+
+// ---- 图片加速设置 ----
+async function loadImageAccelSettings() {
+    try {
+        const res = await fetch("/api/settings/image_accel");
+        const data = await res.json();
+        const toggle = document.getElementById("imageAccelToggle");
+        if (!toggle) return;
+        toggle.checked = data.enabled;
+        document.getElementById("imageAccelOptions").style.display = data.enabled ? "" : "none";
+        // restore saved node selection
+        const savedNode = data.node || "";
+        document.querySelectorAll('input[name="accelNode"]').forEach(function(r) { r.checked = r.value === savedNode; });
+        // auto-run latency test and show results next to each node
+        doLatencyTest();
+        // toggle change
+        toggle.addEventListener("change", async function() {
+            var en = toggle.checked;
+            document.getElementById("imageAccelOptions").style.display = en ? "" : "none";
+            if (en) doLatencyTest();
+        });
+        // node radio change - auto save
+        document.querySelectorAll('input[name="accelNode"]').forEach(function(r) {
+            r.addEventListener("change", async function() {
+                if (!r.checked) return;
+                // just highlight, no auto-save
+            });
+        });
+        // save button
+        document.getElementById("saveAccelBtn").addEventListener("click", async function() {
+            var en = document.getElementById("imageAccelToggle").checked;
+            var node = "i0";
+            document.querySelectorAll('input[name="accelNode"]').forEach(function(r) { if (r.checked) node = r.value; });
+            if (!en) node = "i0";
+            try {
+                await fetch("/api/settings/image_accel", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: en, node: node }) });
+                showToast("\u4fdd\u5b58\u6210\u529f\uff01", "success");
+            } catch (e) { showModal("\u4fdd\u5b58\u5931\u8d25: " + e.message, "error"); }
+        });
+    } catch (e) { console.error("\u52a0\u8f7d\u56fe\u7247\u52a0\u901f\u8bbe\u7f6e\u5931\u8d25:", e); }
+}
+
+function doLatencyTest() {
+    var nodes = ["i0","i1","i2","i3"];
+    var labels = {};
+    document.querySelectorAll('input[name="accelNode"]').forEach(function(r) {
+        var parent = r.parentNode;
+        // remove old latency span if exists
+        var old = parent.querySelector(".latency-span");
+        if (old) old.remove();
+        var span = document.createElement("span");
+        span.className = "latency-span";
+        span.style.cssText = "margin-left:6px;font-size:12px;color:var(--text-muted-color);";
+        span.textContent = "\u6d4b\u901f\u4e2d...";
+        parent.appendChild(span);
+        labels[r.value] = span;
+    });
+    nodes.forEach(function(node) {
+        browserPing(node).then(function(lat) {
+            var span = labels[node];
+            if (!span) return;
+            if (lat !== null) {
+                span.textContent = Math.round(lat) + "ms";
+                span.style.color = "var(--success-hover, #4caf50)";
+            } else {
+                span.textContent = "\u5931\u8d25";
+                span.style.color = "var(--danger-hover)";
+            }
+        });
+    });
+}
+// ---- 首页显示设置 ----
+async function loadPageSizeSettings() {
+    try {
+        var res = await fetch("/api/settings/page_size");
+        var data = await res.json();
+        document.getElementById("pageSizeInput").value = data.page_size || 24;
+    } catch (e) { console.error(e); }
+}
+
+// wire up save button (called from init)
+document.addEventListener("DOMContentLoaded", function() {
+    // load page size after a delay
+    setTimeout(loadPageSizeSettings, 200);
+    
+    var saveBtn = document.getElementById("savePageSizeBtn");
+    if (saveBtn) {
+        saveBtn.addEventListener("click", async function() {
+            var val = parseInt(document.getElementById("pageSizeInput").value, 10) || 24;
+            if (val < 6) val = 6;
+            if (val > 96) val = 96;
+            try {
+                var res = await fetch("/api/settings/page_size", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ page_size: val })
+                });
+                var d = await res.json();
+                if (d.status === "success") {
+                    showToast("保存成功！刷新首页生效", "success");
+                } else {
+                    showModal(d.message || "保存失败", "error");
+                }
+            } catch (e) { showModal("保存失败: " + e.message, "error"); }
+        });
+    }
+});
+
+function browserPing(node) {
+    return new Promise(function(resolve) {
+        var url = "https://" + node + ".wp.com/favicon.ico?_=" + Date.now();
+        var start = performance.now(); var img = new Image(); var resolved = false;
+        img.onload = img.onerror = function() { if (!resolved) { resolved = true; resolve(performance.now() - start); } };
+        setTimeout(function() { if (!resolved) { resolved = true; resolve(null); } }, 8000);
+        img.src = url;
+    });
 }
